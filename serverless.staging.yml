@@ -1,0 +1,100 @@
+# Configuración específica para el ambiente de staging
+
+# Variables de entorno específicas de staging
+environment:
+  # Usar ambiente de homologación de SUNAT para staging
+  SUNAT_AMBIENTE: homologacion
+  SUNAT_ENDPOINT: ${self:provider.environment.SUNAT_ENDPOINT_HOMOLOGACION}
+  
+  # Configuración de logs moderada en staging
+  LOG_LEVEL: info
+  
+  # Timeouts estándar
+  LAMBDA_TIMEOUT: 30
+
+# Configuración de recursos para staging (capacidad media)
+resources:
+  Resources:
+    # Configuración de DynamoDB para staging
+    EmpresasTable:
+      Properties:
+        BillingMode: PAY_PER_REQUEST
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
+        Tags:
+          - Key: Environment
+            Value: staging
+          - Key: Service
+            Value: sunat-facturacion
+    
+    ComprobantesTable:
+      Properties:
+        BillingMode: PAY_PER_REQUEST
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
+        Tags:
+          - Key: Environment
+            Value: staging
+          - Key: Service
+            Value: sunat-facturacion
+    
+    ContadoresTable:
+      Properties:
+        BillingMode: PAY_PER_REQUEST
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
+        Tags:
+          - Key: Environment
+            Value: staging
+          - Key: Service
+            Value: sunat-facturacion
+    
+    # Configuración de S3 para staging
+    FilesBucket:
+      Properties:
+        VersioningConfiguration:
+          Status: Enabled
+        LifecycleConfiguration:
+          Rules:
+            - Id: DeleteOldFiles
+              Status: Enabled
+              ExpirationInDays: 60
+              NoncurrentVersionExpirationInDays: 30
+        Tags:
+          - Key: Environment
+            Value: staging
+          - Key: Service
+            Value: sunat-facturacion
+
+# Configuración de API Gateway para staging
+provider:
+  apiGateway:
+    # Throttling moderado en staging
+    usagePlan:
+      - quota:
+          limit: 25000
+          period: MONTH
+        throttle:
+          burstLimit: 300
+          rateLimit: 150
+  
+  # Configuración de logs en staging
+  logs:
+    restApi:
+      accessLogging: true
+      executionLogging: true
+      level: INFO
+      fullExecutionData: true
+
+# Configuración de funciones Lambda para staging
+functions:
+  # Configuración moderada para funciones críticas
+  generar-comprobante:
+    memorySize: 768
+  
+  enviar-sunat:
+    memorySize: 768
+    timeout: 60
+  
+  procesar-reintentos:
+    memorySize: 512

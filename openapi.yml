@@ -1,0 +1,686 @@
+openapi: 3.0.0
+info:
+  title: API de Facturación Electrónica SUNAT
+  description: |
+    API REST para el sistema de facturación electrónica multi-tenant que cumple con las normativas de SUNAT.
+    
+    ## Autenticación
+    Todos los endpoints requieren autenticación mediante API Key en el header `x-api-key`.
+    
+    ## Rate Limiting
+    - Límite mensual: 10,000 requests
+    - Burst limit: 200 requests
+    - Rate limit: 100 requests/segundo
+    
+    ## Flujo de Facturación
+    1. Registrar empresa (POST /empresas)
+    2. Cargar certificado digital (POST /certificados)
+    3. Generar comprobante (POST /comprobantes/generar)
+    4. Firmar comprobante (POST /comprobantes/{numero}/firmar)
+    5. Enviar a SUNAT (POST /comprobantes/{numero}/enviar)
+    6. Consultar estado (GET /comprobantes/{numero}/estado)
+    7. Descargar PDF (GET /comprobantes/{numero}/pdf)
+  version: 1.0.0
+  contact:
+    name: Soporte Técnico
+    email: soporte@example.com
+
+servers:
+  - url: https://api.example.com/dev
+    description: Servidor de desarrollo
+  - url: https://api.example.com/prod
+    description: Servidor de producción
+
+security:
+  - ApiKeyAuth: []
+
+tags:
+  - name: Empresas
+    description: Gestión de empresas multi-tenant
+  - name: Comprobantes
+    description: Generación, firma y envío de comprobantes
+  - name: Certificados
+    description: Gestión de certificados digitales
+  - name: Consultas
+    description: Consulta de estado y descarga de documentos
+
+paths:
+  /empresas:
+    post:
+      tags:
+        - Empresas
+      summary: Registrar nueva empresa
+      description: Registra una nueva empresa en el sistema multi-tenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmpresaInput'
+      responses:
+        '201':
+          description: Empresa registrada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Empresa'
+        '400':
+          description: Datos inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: La empresa ya existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    get:
+      tags:
+        - Empresas
+      summary: Listar empresas
+      description: Obtiene la lista de todas las empresas registradas
+      responses:
+        '200':
+          description: Lista de empresas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  empresas:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Empresa'
+
+  /empresas/{ruc}:
+    get:
+      tags:
+        - Empresas
+      summary: Obtener empresa por RUC
+      description: Obtiene los datos de una empresa específica
+      parameters:
+        - name: ruc
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{11}$'
+          description: RUC de la empresa (11 dígitos)
+      responses:
+        '200':
+          description: Datos de la empresa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Empresa'
+        '404':
+          description: Empresa no encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    put:
+      tags:
+        - Empresas
+      summary: Actualizar empresa
+      description: Actualiza los datos de una empresa existente
+      parameters:
+        - name: ruc
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{11}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmpresaUpdate'
+      responses:
+        '200':
+          description: Empresa actualizada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Empresa'
+        '404':
+          description: Empresa no encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /comprobantes/generar:
+    post:
+      tags:
+        - Comprobantes
+      summary: Generar comprobante
+      description: Genera un nuevo comprobante electrónico (boleta o factura)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComprobanteInput'
+      responses:
+        '201':
+          description: Comprobante generado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comprobante'
+        '400':
+          description: Datos inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /comprobantes/{numero}/firmar:
+    post:
+      tags:
+        - Comprobantes
+      summary: Firmar comprobante
+      description: Firma digitalmente un comprobante usando el certificado de la empresa
+      parameters:
+        - name: numero
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Número del comprobante (ej. B001-00000001)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - empresaRuc
+              properties:
+                empresaRuc:
+                  type: string
+                  pattern: '^\d{11}$'
+      responses:
+        '200':
+          description: Comprobante firmado exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensaje:
+                    type: string
+                  xmlFirmado:
+                    type: string
+        '404':
+          description: Comprobante o certificado no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /comprobantes/{numero}/enviar:
+    post:
+      tags:
+        - Comprobantes
+      summary: Enviar comprobante a SUNAT
+      description: Envía el comprobante firmado a SUNAT y procesa la respuesta (CDR)
+      parameters:
+        - name: numero
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - empresaRuc
+              properties:
+                empresaRuc:
+                  type: string
+                  pattern: '^\d{11}$'
+      responses:
+        '200':
+          description: Comprobante enviado exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensaje:
+                    type: string
+                  cdr:
+                    $ref: '#/components/schemas/CDR'
+        '400':
+          description: Error en el envío
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /comprobantes/{numero}/estado:
+    get:
+      tags:
+        - Consultas
+      summary: Consultar estado del comprobante
+      description: Obtiene el estado actual de un comprobante
+      parameters:
+        - name: numero
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: empresaRuc
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{11}$'
+      responses:
+        '200':
+          description: Estado del comprobante
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  numero:
+                    type: string
+                  estado:
+                    type: string
+                    enum: [PENDIENTE, ENVIADO, ACEPTADO, RECHAZADO]
+                  motivoRechazo:
+                    type: string
+                  cdr:
+                    $ref: '#/components/schemas/CDR'
+        '404':
+          description: Comprobante no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /comprobantes/{numero}/pdf:
+    get:
+      tags:
+        - Consultas
+      summary: Descargar PDF del comprobante
+      description: Genera y descarga el PDF de un comprobante aceptado
+      parameters:
+        - name: numero
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: empresaRuc
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{11}$'
+      responses:
+        '200':
+          description: PDF del comprobante
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Comprobante no encontrado o no aceptado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /certificados:
+    post:
+      tags:
+        - Certificados
+      summary: Cargar certificado digital
+      description: Carga el certificado digital de una empresa para firma electrónica
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - ruc
+                - archivo
+                - password
+              properties:
+                ruc:
+                  type: string
+                  pattern: '^\d{11}$'
+                archivo:
+                  type: string
+                  format: binary
+                  description: Archivo PFX/P12 del certificado
+                password:
+                  type: string
+                  format: password
+      responses:
+        '201':
+          description: Certificado cargado exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensaje:
+                    type: string
+                  certificado:
+                    $ref: '#/components/schemas/Certificado'
+        '400':
+          description: Certificado inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /certificados/{ruc}:
+    get:
+      tags:
+        - Certificados
+      summary: Consultar estado del certificado
+      description: Obtiene información sobre el certificado de una empresa
+      parameters:
+        - name: ruc
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{11}$'
+      responses:
+        '200':
+          description: Información del certificado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Certificado'
+        '404':
+          description: Certificado no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: API Key para autenticación
+
+  schemas:
+    EmpresaInput:
+      type: object
+      required:
+        - ruc
+        - razonSocial
+        - direccion
+        - credencialesSunat
+      properties:
+        ruc:
+          type: string
+          pattern: '^\d{11}$'
+          description: RUC de la empresa (11 dígitos)
+        razonSocial:
+          type: string
+          minLength: 1
+          maxLength: 200
+        nombreComercial:
+          type: string
+          maxLength: 200
+        direccion:
+          $ref: '#/components/schemas/Direccion'
+        credencialesSunat:
+          $ref: '#/components/schemas/CredencialesSunat'
+
+    EmpresaUpdate:
+      type: object
+      properties:
+        razonSocial:
+          type: string
+        nombreComercial:
+          type: string
+        direccion:
+          $ref: '#/components/schemas/Direccion'
+        credencialesSunat:
+          $ref: '#/components/schemas/CredencialesSunat'
+        activo:
+          type: boolean
+
+    Empresa:
+      type: object
+      properties:
+        ruc:
+          type: string
+        razonSocial:
+          type: string
+        nombreComercial:
+          type: string
+        direccion:
+          $ref: '#/components/schemas/Direccion'
+        activo:
+          type: boolean
+        fechaRegistro:
+          type: string
+          format: date-time
+
+    Direccion:
+      type: object
+      required:
+        - direccion
+        - departamento
+        - provincia
+        - distrito
+        - ubigeo
+      properties:
+        direccion:
+          type: string
+        departamento:
+          type: string
+        provincia:
+          type: string
+        distrito:
+          type: string
+        ubigeo:
+          type: string
+          pattern: '^\d{6}$'
+
+    CredencialesSunat:
+      type: object
+      required:
+        - ruc
+        - usuario
+        - password
+      properties:
+        ruc:
+          type: string
+          pattern: '^\d{11}$'
+        usuario:
+          type: string
+        password:
+          type: string
+          format: password
+
+    ComprobanteInput:
+      type: object
+      required:
+        - empresaRuc
+        - tipo
+        - receptor
+        - items
+      properties:
+        empresaRuc:
+          type: string
+          pattern: '^\d{11}$'
+        tipo:
+          type: string
+          enum: ['03', '01']
+          description: '03 = Boleta, 01 = Factura'
+        receptor:
+          $ref: '#/components/schemas/Receptor'
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ItemComprobante'
+        moneda:
+          type: string
+          enum: [PEN, USD]
+          default: PEN
+
+    Comprobante:
+      type: object
+      properties:
+        empresaRuc:
+          type: string
+        numero:
+          type: string
+        tipo:
+          type: string
+        fecha:
+          type: string
+          format: date-time
+        emisor:
+          $ref: '#/components/schemas/Emisor'
+        receptor:
+          $ref: '#/components/schemas/Receptor'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemComprobante'
+        subtotal:
+          type: number
+        igv:
+          type: number
+        total:
+          type: number
+        moneda:
+          type: string
+        estado:
+          type: string
+          enum: [PENDIENTE, ENVIADO, ACEPTADO, RECHAZADO]
+
+    Emisor:
+      type: object
+      properties:
+        ruc:
+          type: string
+        razonSocial:
+          type: string
+        nombreComercial:
+          type: string
+        direccion:
+          $ref: '#/components/schemas/Direccion'
+
+    Receptor:
+      type: object
+      required:
+        - tipoDocumento
+        - numeroDocumento
+        - nombre
+      properties:
+        tipoDocumento:
+          type: string
+          description: '1 = DNI, 6 = RUC'
+        numeroDocumento:
+          type: string
+        nombre:
+          type: string
+        razonSocial:
+          type: string
+        direccion:
+          $ref: '#/components/schemas/Direccion'
+
+    ItemComprobante:
+      type: object
+      required:
+        - codigo
+        - descripcion
+        - cantidad
+        - unidadMedida
+        - precioUnitario
+        - afectacionIGV
+        - igv
+        - total
+      properties:
+        codigo:
+          type: string
+        descripcion:
+          type: string
+        cantidad:
+          type: number
+          minimum: 0
+        unidadMedida:
+          type: string
+        precioUnitario:
+          type: number
+          minimum: 0
+        afectacionIGV:
+          type: string
+          description: Código de afectación del IGV (catálogo 07)
+        igv:
+          type: number
+          minimum: 0
+        total:
+          type: number
+          minimum: 0
+
+    CDR:
+      type: object
+      properties:
+        codigo:
+          type: string
+          description: Código de respuesta de SUNAT
+        mensaje:
+          type: string
+          description: Mensaje de respuesta de SUNAT
+        xml:
+          type: string
+          description: XML del CDR
+        fechaRecepcion:
+          type: string
+          format: date-time
+
+    Certificado:
+      type: object
+      properties:
+        ruc:
+          type: string
+        fechaEmision:
+          type: string
+          format: date
+        fechaVencimiento:
+          type: string
+          format: date
+        emisor:
+          type: string
+        vigente:
+          type: boolean
+        diasParaVencer:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        mensaje:
+          type: string
+        detalles:
+          type: object

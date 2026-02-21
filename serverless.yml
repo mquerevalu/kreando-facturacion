@@ -1,0 +1,283 @@
+service: sunat-facturacion
+
+frameworkVersion: '4'
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-2'}  # Ohio por defecto
+  memorySize: 512
+  timeout: 30
+  environment:
+    STAGE: ${self:provider.stage}
+    EMPRESAS_TABLE: ${self:service}-empresas-${self:provider.stage}
+    COMPROBANTES_TABLE: ${self:service}-comprobantes-${self:provider.stage}
+    CONTADORES_TABLE: ${self:service}-contadores-${self:provider.stage}
+    S3_BUCKET: ${self:service}-files-${self:provider.stage}
+    SQS_QUEUE_URL: !Ref ReintentosQueue
+    SUNAT_ENDPOINT_PRODUCCION: https://e-factura.sunat.gob.pe/ol-ti-itcpfegem/billService
+    SUNAT_ENDPOINT_HOMOLOGACION: https://e-beta.sunat.gob.pe/ol-ti-itcpfegem-beta/billService
+  logs:
+    # Configuración de CloudWatch Logs
+    restApi: false  # Desactivado para evitar conflictos
+  apiGateway:
+    # Configuración de API Gateway
+    description: API de Facturación Electrónica SUNAT
+    # API Keys para autenticación
+    apiKeys:
+      - name: ${self:service}-api-key-${self:provider.stage}
+        description: API Key para acceso al sistema de facturación
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource:
+            - !GetAtt EmpresasTable.Arn
+            - !GetAtt ComprobantesTable.Arn
+            - !GetAtt ContadoresTable.Arn
+            - !Sub '${EmpresasTable.Arn}/index/*'
+            - !Sub '${ComprobantesTable.Arn}/index/*'
+        - Effect: Allow
+          Action:
+            - s3:GetObject
+            - s3:PutObject
+            - s3:DeleteObject
+          Resource:
+            - !Sub '${FilesBucket.Arn}/*'
+        - Effect: Allow
+          Action:
+            - secretsmanager:GetSecretValue
+            - secretsmanager:PutSecretValue
+            - secretsmanager:CreateSecret
+            - secretsmanager:UpdateSecret
+          Resource:
+            - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:sunat/*'
+        - Effect: Allow
+          Action:
+            - sqs:SendMessage
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+          Resource:
+            - !GetAtt ReintentosQueue.Arn
+        - Effect: Allow
+          Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+          Resource:
+            - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${self:service}-*:*'
+
+functions:
+  empresas-handler:
+    handler: src/handlers/empresas.handler
+    timeout: 30
+    events:
+      - http:
+          path: /empresas
+          method: post
+          cors: true
+          private: true
+      - http:
+          path: /empresas
+          method: get
+          cors: true
+          private: true
+      - http:
+          path: /empresas/{ruc}
+          method: get
+          cors: true
+          private: true
+      - http:
+          path: /empresas/{ruc}
+          method: put
+          cors: true
+          private: true
+
+  generar-comprobante:
+    handler: src/handlers/generar-comprobante.handler
+    timeout: 30
+    events:
+      - http:
+          path: /comprobantes/generar
+          method: post
+          cors: true
+          private: true
+
+  firmar-comprobante:
+    handler: src/handlers/firmar-comprobante.handler
+    timeout: 30
+    events:
+      - http:
+          path: /comprobantes/{numero}/firmar
+          method: post
+          cors: true
+          private: true
+
+  enviar-sunat:
+    handler: src/handlers/enviar-sunat.handler
+    timeout: 60
+    events:
+      - http:
+          path: /comprobantes/{numero}/enviar
+          method: post
+          cors: true
+          private: true
+
+  consultar-estado:
+    handler: src/handlers/consultar-estado.handler
+    timeout: 30
+    events:
+      - http:
+          path: /comprobantes/{numero}/estado
+          method: get
+          cors: true
+          private: true
+
+  generar-pdf:
+    handler: src/handlers/generar-pdf.handler
+    timeout: 30
+    events:
+      - http:
+          path: /comprobantes/{numero}/pdf
+          method: get
+          cors: true
+          private: true
+
+  gestionar-certificados:
+    handler: src/handlers/gestionar-certificados.handler
+    timeout: 30
+    events:
+      - http:
+          path: /certificados
+          method: post
+          cors: true
+          private: true
+      - http:
+          path: /certificados/{ruc}
+          method: get
+          cors: true
+          private: true
+
+  procesar-reintentos:
+    handler: src/handlers/procesar-reintentos.handler
+    timeout: 60
+    events:
+      - sqs:
+          arn: !GetAtt ReintentosQueue.Arn
+          batchSize: 10
+
+resources:
+  Resources:
+    # Tabla DynamoDB para Empresas
+    EmpresasTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.EMPRESAS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: ruc
+            AttributeType: S
+        KeySchema:
+          - AttributeName: ruc
+            KeyType: HASH
+
+    # Tabla DynamoDB para Comprobantes
+    ComprobantesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.COMPROBANTES_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: empresaRuc
+            AttributeType: S
+          - AttributeName: numero
+            AttributeType: S
+          - AttributeName: estado
+            AttributeType: S
+          - AttributeName: fecha
+            AttributeType: S
+        KeySchema:
+          - AttributeName: empresaRuc
+            KeyType: HASH
+          - AttributeName: numero
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: empresaRuc-estado-index
+            KeySchema:
+              - AttributeName: empresaRuc
+                KeyType: HASH
+              - AttributeName: estado
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+          - IndexName: empresaRuc-fecha-index
+            KeySchema:
+              - AttributeName: empresaRuc
+                KeyType: HASH
+              - AttributeName: fecha
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+
+    # Tabla DynamoDB para Contadores (numeración correlativa)
+    ContadoresTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.CONTADORES_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: contadorKey
+            AttributeType: S
+        KeySchema:
+          - AttributeName: contadorKey
+            KeyType: HASH
+
+    # Bucket S3 para archivos
+    FilesBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.environment.S3_BUCKET}
+        BucketEncryption:
+          ServerSideEncryptionConfiguration:
+            - ServerSideEncryptionByDefault:
+                SSEAlgorithm: AES256
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+
+    # Cola SQS para reintentos
+    ReintentosQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-reintentos-${self:provider.stage}
+        VisibilityTimeout: 120
+        MessageRetentionPeriod: 1209600 # 14 días
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt ReintentosDeadLetterQueue.Arn
+          maxReceiveCount: 3
+
+    # Cola DLQ para mensajes fallidos
+    ReintentosDeadLetterQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-reintentos-dlq-${self:provider.stage}
+        MessageRetentionPeriod: 1209600 # 14 días
+
+plugins:
+  - serverless-offline
+
+custom:
+  serverless-offline:
+    httpPort: 3000
+    lambdaPort: 3002

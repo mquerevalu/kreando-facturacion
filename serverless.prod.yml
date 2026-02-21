@@ -1,0 +1,122 @@
+# Configuración específica para el ambiente de producción
+
+# Variables de entorno específicas de producción
+environment:
+  # Usar ambiente de producción de SUNAT
+  SUNAT_AMBIENTE: produccion
+  SUNAT_ENDPOINT: ${self:provider.environment.SUNAT_ENDPOINT_PRODUCCION}
+  
+  # Configuración de logs menos verbosa en producción (reduce costos)
+  LOG_LEVEL: warn  # Solo warnings y errores
+  
+  # Timeouts estándar
+  LAMBDA_TIMEOUT: 30
+
+# Configuración de recursos para producción (optimizada para costos)
+resources:
+  Resources:
+    # Configuración de DynamoDB para producción
+    EmpresasTable:
+      Properties:
+        BillingMode: PAY_PER_REQUEST  # Solo pagas por uso real
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
+        Tags:
+          - Key: Environment
+            Value: production
+          - Key: Service
+            Value: sunat-facturacion
+    
+    ComprobantesTable:
+      Properties:
+        BillingMode: PAY_PER_REQUEST  # Solo pagas por uso real
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
+        Tags:
+          - Key: Environment
+            Value: production
+          - Key: Service
+            Value: sunat-facturacion
+    
+    ContadoresTable:
+      Properties:
+        BillingMode: PAY_PER_REQUEST  # Solo pagas por uso real
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: false  # Reducir costos
+        Tags:
+          - Key: Environment
+            Value: production
+          - Key: Service
+            Value: sunat-facturacion
+    
+    # Configuración de S3 para producción (optimizada)
+    FilesBucket:
+      Properties:
+        VersioningConfiguration:
+          Status: Enabled
+        LifecycleConfiguration:
+          Rules:
+            - Id: TransitionToIA
+              Status: Enabled
+              Transitions:
+                - TransitionInDays: 90
+                  StorageClass: STANDARD_IA  # Más barato después de 90 días
+            - Id: DeleteOldVersions
+              Status: Enabled
+              NoncurrentVersionExpirationInDays: 30  # Solo elimina versiones antiguas, no el archivo actual
+        Tags:
+          - Key: Environment
+            Value: production
+          - Key: Service
+            Value: sunat-facturacion
+    
+    # Alarmas críticas solamente (reduce costos de CloudWatch)
+    HighErrorRateAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: ${self:service}-${self:provider.stage}-high-error-rate
+        AlarmDescription: Alerta cuando la tasa de errores es alta
+        MetricName: Errors
+        Namespace: AWS/Lambda
+        Statistic: Sum
+        Period: 600  # 10 minutos (reducido de 5)
+        EvaluationPeriods: 2
+        Threshold: 20  # Aumentado de 10 a 20
+        ComparisonOperator: GreaterThanThreshold
+        TreatMissingData: notBreaching
+
+# Configuración de API Gateway para producción
+provider:
+  apiGateway:
+    # Throttling moderado en producción
+    usagePlan:
+      - quota:
+          limit: 10000
+          period: MONTH
+        throttle:
+          burstLimit: 200
+          rateLimit: 100
+  
+  # Configuración de logs en producción (reducida para ahorrar)
+  logs:
+    restApi:
+      accessLogging: true
+      executionLogging: false  # Desactivado para reducir costos
+      level: ERROR  # Solo errores
+      fullExecutionData: false
+
+# Configuración de funciones Lambda para producción (optimizada)
+functions:
+  # Memoria moderada para funciones críticas
+  generar-comprobante:
+    memorySize: 512  # Reducido de 1024
+    reservedConcurrency: 5  # Reducido de 10
+  
+  enviar-sunat:
+    memorySize: 512  # Reducido de 1024
+    reservedConcurrency: 5  # Reducido de 10
+    timeout: 60  # Reducido de 90
+  
+  procesar-reintentos:
+    memorySize: 256  # Reducido de 512
+    reservedConcurrency: 2  # Reducido de 5

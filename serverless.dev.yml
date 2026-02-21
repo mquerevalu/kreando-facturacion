@@ -1,0 +1,67 @@
+# Configuración específica para el ambiente de desarrollo
+
+# Variables de entorno específicas de desarrollo
+environment:
+  # Usar ambiente de homologación de SUNAT para desarrollo
+  SUNAT_AMBIENTE: homologacion
+  SUNAT_ENDPOINT: ${self:provider.environment.SUNAT_ENDPOINT_HOMOLOGACION}
+  
+  # Configuración de logs más verbosa en desarrollo
+  LOG_LEVEL: debug
+  
+  # Timeouts más largos para debugging
+  LAMBDA_TIMEOUT: 60
+
+# Configuración de recursos para desarrollo (menor capacidad)
+resources:
+  Resources:
+    # Configuración de DynamoDB para desarrollo
+    EmpresasTable:
+      Properties:
+        BillingMode: PAY_PER_REQUEST
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: false
+    
+    ComprobantesTable:
+      Properties:
+        BillingMode: PAY_PER_REQUEST
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: false
+    
+    ContadoresTable:
+      Properties:
+        BillingMode: PAY_PER_REQUEST
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: false
+    
+    # Configuración de S3 para desarrollo
+    FilesBucket:
+      Properties:
+        LifecycleConfiguration:
+          Rules:
+            - Id: DeleteOldFiles
+              Status: Enabled
+              ExpirationInDays: 30
+              NoncurrentVersionExpirationInDays: 7
+
+# Configuración de API Gateway para desarrollo
+provider:
+  apiGateway:
+    # Sin throttling estricto en desarrollo
+    usagePlan:
+      - quota:
+          limit: 50000
+          period: MONTH
+        throttle:
+          burstLimit: 500
+          rateLimit: 200
+
+# Configuración de serverless-offline para desarrollo local
+custom:
+  serverless-offline:
+    httpPort: 3000
+    lambdaPort: 3002
+    # Simular variables de entorno de AWS
+    environment:
+      AWS_REGION: us-east-1
+      AWS_ACCOUNT_ID: '123456789012'

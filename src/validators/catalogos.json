@@ -1,0 +1,61 @@
+{
+  "01": {
+    "01": "Factura",
+    "03": "Boleta de Venta",
+    "07": "Nota de Crédito",
+    "08": "Nota de Débito",
+    "09": "Guía de Remisión - Remitente",
+    "12": "Ticket de Máquina Registradora",
+    "13": "Documento emitido por bancos, instituciones financieras",
+    "14": "Recibo por servicios públicos",
+    "16": "Voucher de venta",
+    "20": "Comprobante de Retención",
+    "31": "Guía de Remisión - Transportista",
+    "40": "Comprobante de Percepción",
+    "56": "Comprobante de pago SEAE"
+  },
+  "05": {
+    "1000": "IGV - Impuesto General a las Ventas",
+    "1016": "IVAP - Impuesto a la Venta de Arroz Pilado",
+    "2000": "ISC - Impuesto Selectivo al Consumo",
+    "7152": "ICBPER - Impuesto al Consumo de las Bolsas de Plástico",
+    "9995": "EXP - Exportación",
+    "9996": "GRA - Gratuito",
+    "9997": "EXO - Exonerado",
+    "9998": "INA - Inafecto",
+    "9999": "OTROS - Otros conceptos de pago"
+  },
+  "06": {
+    "0": "DOC.TRIB.NO.DOM.SIN.RUC",
+    "1": "DNI - Documento Nacional de Identidad",
+    "4": "Carnet de Extranjería",
+    "6": "RUC - Registro Único de Contribuyentes",
+    "7": "Pasaporte",
+    "A": "Cédula Diplomática de identidad",
+    "B": "DOC.IDENT.PAIS.RESIDENCIA-NO.D",
+    "C": "Tax Identification Number - TIN – Doc Trib PP.NN",
+    "D": "Identification Number - IN – Doc Trib PP. JJ",
+    "E": "TAM- Tarjeta Andina de Migración"
+  },
+  "07": {
+    "10": "Gravado - Operación Onerosa",
+    "11": "Gravado - Retiro por premio",
+    "12": "Gravado - Retiro por donación",
+    "13": "Gravado - Retiro",
+    "14": "Gravado - Retiro por publicidad",
+    "15": "Gravado - Bonificaciones",
+    "16": "Gravado - Retiro por entrega a trabajadores",
+    "17": "Gravado - IVAP",
+    "20": "Exonerado - Operación Onerosa",
+    "21": "Exonerado - Transferencia Gratuita",
+    "30": "Inafecto - Operación Onerosa",
+    "31": "Inafecto - Retiro por Bonificación",
+    "32": "Inafecto - Retiro",
+    "33": "Inafecto - Retiro por Muestras Médicas",
+    "34": "Inafecto - Retiro por Convenio Colectivo",
+    "35": "Inafecto - Retiro por premio",
+    "36": "Inafecto - Retiro por publicidad",
+    "37": "Inafecto - Transferencia Gratuita",
+    "40": "Exportación"
+  }
+}
