@@ -173,7 +173,15 @@ export class SunatSoapClient implements ISunatSoapClient {
       const zipObj = new JSZip();
       const zipContent = await zipObj.loadAsync(zip);
       const files = Object.keys(zipContent.files);
-      const nombreArchivo = files[0] || 'documento.xml';
+      let nombreArchivo = files[0] || 'documento.xml';
+      
+      // IMPORTANTE: SUNAT requiere el nombre SIN la extensión .xml
+      // El archivo dentro del ZIP debe tener .xml, pero el fileName en SOAP debe ser sin extensión
+      if (nombreArchivo.endsWith('.xml')) {
+        nombreArchivo = nombreArchivo.slice(0, -4); // Remover .xml
+      }
+
+      console.log(`Enviando a SUNAT - fileName: ${nombreArchivo}`);
 
       // Llamar al método sendBill del servicio SOAP
       const [result] = await client.sendBillAsync({

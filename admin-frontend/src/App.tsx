@@ -11,6 +11,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Empresas from './pages/Empresas';
 import Certificados from './pages/Certificados';
+import Series from './pages/Series';
 import Comprobantes from './pages/Comprobantes';
 
 Amplify.configure(awsConfig);
@@ -49,6 +50,7 @@ function App() {
             <Route index element={<Dashboard />} />
             <Route path="empresas" element={<Empresas />} />
             <Route path="certificados" element={<Certificados />} />
+            <Route path="series" element={<Series />} />
             <Route path="comprobantes" element={<Comprobantes />} />
           </Route>
         </Routes>

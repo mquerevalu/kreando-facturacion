@@ -14,5 +14,8 @@ export * from './empresa';
 // Comprobantes
 export * from './comprobante';
 
+// Series
+export * from './serie';
+
 // Respuestas
 export * from './responses';

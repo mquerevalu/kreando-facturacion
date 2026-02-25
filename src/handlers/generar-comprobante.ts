@@ -309,7 +309,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     ) {
       console.log('Generando PDF...');
       try {
-        const pdfBuffer = await pdfGenerator.generarPDF(comprobanteActualizado, cdr);
+        const pdfBuffer = await pdfGenerator.generarPDF(comprobanteActualizado, empresa, undefined, cdr);
         urlPDF = await s3Repository.guardarPDF(
           request.empresaRuc,
           comprobante.numero,

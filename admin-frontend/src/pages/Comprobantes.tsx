@@ -10,9 +10,22 @@ import {
   Chip,
   IconButton,
   MenuItem,
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  CircularProgress,
 } from '@mui/material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
-import { Search as SearchIcon, Download as DownloadIcon, Refresh as RefreshIcon } from '@mui/icons-material';
+import { 
+  Search as SearchIcon, 
+  Refresh as RefreshIcon,
+  Send as SendIcon,
+  PictureAsPdf as PdfIcon,
+  Code as XmlIcon,
+  Receipt as CdrIcon,
+} from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -35,6 +48,13 @@ export default function Comprobantes() {
   const [empresas, setEmpresas] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [sendingToSunat, setSendingToSunat] = useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    numero: string;
+    empresaRuc: string;
+  }>({ open: false, numero: '', empresaRuc: '' });
   const [filters, setFilters] = useState({
     empresaRuc: '',
     tipo: '',
@@ -104,6 +124,83 @@ export default function Comprobantes() {
       document.body.removeChild(a);
     } catch (err: any) {
       setError(err.response?.data?.mensaje || 'Error al descargar PDF');
+    }
+  };
+
+  const handleDownloadXML = async (numero: string, empresaRuc: string) => {
+    try {
+      setError('');
+      const data = await apiService.getEstadoComprobante(numero, empresaRuc);
+      
+      if (!data.xmlFirmado) {
+        setError('El XML firmado no está disponible');
+        return;
+      }
+
+      // Crear blob con el XML
+      const blob = new Blob([data.xmlFirmado], { type: 'application/xml' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${numero}.xml`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      setSuccess('XML descargado exitosamente');
+    } catch (err: any) {
+      setError(err.response?.data?.mensaje || 'Error al descargar XML');
+    }
+  };
+
+  const handleDownloadCDR = async (numero: string, empresaRuc: string) => {
+    try {
+      setError('');
+      const data = await apiService.getEstadoComprobante(numero, empresaRuc);
+      
+      if (!data.cdr || !data.cdr.urlDescarga) {
+        setError('El CDR no está disponible. El comprobante debe estar ACEPTADO por SUNAT.');
+        return;
+      }
+
+      // Descargar desde la URL pre-firmada
+      const response = await fetch(data.cdr.urlDescarga);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `R-${numero}.xml`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      setSuccess('CDR descargado exitosamente');
+    } catch (err: any) {
+      setError(err.response?.data?.mensaje || 'Error al descargar CDR');
+    }
+  };
+
+  const handleSendToSunat = (numero: string, empresaRuc: string) => {
+    setConfirmDialog({ open: true, numero, empresaRuc });
+  };
+
+  const confirmSendToSunat = async () => {
+    const { numero, empresaRuc } = confirmDialog;
+    setConfirmDialog({ open: false, numero: '', empresaRuc: '' });
+    setSendingToSunat(numero);
+    setError('');
+    setSuccess('');
+
+    try {
+      await apiService.enviarComprobanteSunat(numero, empresaRuc);
+      setSuccess(`Comprobante ${numero} enviado exitosamente a SUNAT`);
+      
+      // Actualizar el estado del comprobante
+      await handleRefreshStatus(numero, empresaRuc);
+    } catch (err: any) {
+      setError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al enviar a SUNAT');
+    } finally {
+      setSendingToSunat(null);
     }
   };
 
@@ -181,26 +278,72 @@ export default function Comprobantes() {
     {
       field: 'actions',
       headerName: 'Acciones',
-      width: 150,
+      width: 250,
       renderCell: (params) => (
-        <Box>
-          <IconButton
-            size="small"
-            color="primary"
-            onClick={() => handleDownloadPDF(params.row.numero, params.row.empresaRuc)}
-            title="Descargar PDF"
-            disabled={params.row.estado !== 'ACEPTADO'}
-          >
-            <DownloadIcon />
-          </IconButton>
-          <IconButton
-            size="small"
-            color="primary"
-            onClick={() => handleRefreshStatus(params.row.numero, params.row.empresaRuc)}
-            title="Actualizar Estado"
-          >
-            <RefreshIcon />
-          </IconButton>
+        <Box sx={{ display: 'flex', gap: 0.5 }}>
+          <Tooltip title="Descargar PDF">
+            <IconButton
+              size="small"
+              color="primary"
+              onClick={() => handleDownloadPDF(params.row.numero, params.row.empresaRuc)}
+            >
+              <PdfIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Descargar XML">
+            <IconButton
+              size="small"
+              color="primary"
+              onClick={() => handleDownloadXML(params.row.numero, params.row.empresaRuc)}
+            >
+              <XmlIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Descargar CDR">
+            <span>
+              <IconButton
+                size="small"
+                color="success"
+                onClick={() => handleDownloadCDR(params.row.numero, params.row.empresaRuc)}
+                disabled={params.row.estado !== 'ACEPTADO'}
+              >
+                <CdrIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+
+          <Tooltip title="Enviar a SUNAT">
+            <span>
+              <IconButton
+                size="small"
+                color="warning"
+                onClick={() => handleSendToSunat(params.row.numero, params.row.empresaRuc)}
+                disabled={
+                  params.row.estado === 'ACEPTADO' || 
+                  params.row.estado === 'ENVIADO' ||
+                  sendingToSunat === params.row.numero
+                }
+              >
+                {sendingToSunat === params.row.numero ? (
+                  <CircularProgress size={20} />
+                ) : (
+                  <SendIcon fontSize="small" />
+                )}
+              </IconButton>
+            </span>
+          </Tooltip>
+
+          <Tooltip title="Actualizar Estado">
+            <IconButton
+              size="small"
+              color="info"
+              onClick={() => handleRefreshStatus(params.row.numero, params.row.empresaRuc)}
+            >
+              <RefreshIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Box>
       ),
     },
@@ -218,6 +361,12 @@ export default function Comprobantes() {
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
           {error}
+        </Alert>
+      )}
+
+      {success && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>
+          {success}
         </Alert>
       )}
 
@@ -328,6 +477,27 @@ export default function Comprobantes() {
           />
         </CardContent>
       </Card>
+
+      {/* Diálogo de confirmación para envío a SUNAT */}
+      <Dialog open={confirmDialog.open} onClose={() => setConfirmDialog({ open: false, numero: '', empresaRuc: '' })}>
+        <DialogTitle>Confirmar Envío a SUNAT</DialogTitle>
+        <DialogContent>
+          <Typography>
+            ¿Está seguro que desea enviar el comprobante <strong>{confirmDialog.numero}</strong> a SUNAT?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            Esta acción enviará el comprobante al servicio web de SUNAT para su validación y registro.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDialog({ open: false, numero: '', empresaRuc: '' })}>
+            Cancelar
+          </Button>
+          <Button onClick={confirmSendToSunat} variant="contained" color="primary">
+            Enviar
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

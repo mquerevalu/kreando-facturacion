@@ -14,6 +14,7 @@ provider:
     EMPRESAS_TABLE: ${self:service}-empresas-${self:provider.stage}
     COMPROBANTES_TABLE: ${self:service}-comprobantes-${self:provider.stage}
     CONTADORES_TABLE: ${self:service}-contadores-${self:provider.stage}
+    SERIES_TABLE: ${self:service}-series-${self:provider.stage}
     S3_BUCKET: ${self:service}-files-${self:provider.stage}
     SQS_QUEUE_URL: !Ref ReintentosQueue
     SUNAT_ENDPOINT_PRODUCCION: https://e-factura.sunat.gob.pe/ol-ti-itcpfegem/billService
@@ -43,6 +44,7 @@ provider:
             - !GetAtt EmpresasTable.Arn
             - !GetAtt ComprobantesTable.Arn
             - !GetAtt ContadoresTable.Arn
+            - !GetAtt SeriesTable.Arn
             - !Sub '${EmpresasTable.Arn}/index/*'
             - !Sub '${ComprobantesTable.Arn}/index/*'
         - Effect: Allow
@@ -173,7 +175,7 @@ functions:
     events:
       - http:
           path: /comprobantes/{numero}/pdf
-          method: get
+          method: post
           cors: true
           private: true
 
@@ -189,6 +191,36 @@ functions:
       - http:
           path: /certificados/{ruc}
           method: get
+          cors: true
+          private: true
+
+  series-handler:
+    handler: src/handlers/series.handler
+    timeout: 30
+    events:
+      - http:
+          path: /series
+          method: post
+          cors: true
+          private: true
+      - http:
+          path: /series/{empresaRuc}
+          method: get
+          cors: true
+          private: true
+      - http:
+          path: /series/{empresaRuc}/{tipoComprobante}/{serie}
+          method: get
+          cors: true
+          private: true
+      - http:
+          path: /series/{empresaRuc}/{tipoComprobante}/{serie}
+          method: put
+          cors: true
+          private: true
+      - http:
+          path: /series/{empresaRuc}/{tipoComprobante}/{serie}
+          method: delete
           cors: true
           private: true
 
@@ -266,6 +298,23 @@ resources:
           - AttributeName: contadorKey
             KeyType: HASH
 
+    # Tabla DynamoDB para Series de Comprobantes
+    SeriesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.SERIES_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: empresaRuc
+            AttributeType: S
+          - AttributeName: serieKey
+            AttributeType: S
+        KeySchema:
+          - AttributeName: empresaRuc
+            KeyType: HASH
+          - AttributeName: serieKey
+            KeyType: RANGE
+
     # Bucket S3 para archivos
     FilesBucket:
       Type: AWS::S3::Bucket
@@ -301,6 +350,19 @@ resources:
 
 plugins:
   - serverless-offline
+
+package:
+  patterns:
+    - '!node_modules/**'
+    - 'node_modules/pdfkit/js/data/**'
+    - '!src/**'
+    - '!.git/**'
+    - '!.github/**'
+    - '!coverage/**'
+    - '!.serverless/**'
+    - 'dist/**'
+    - 'src/validators/catalogos.json'
+    - 'src/handlers/data/**'
 
 custom:
   serverless-offline:

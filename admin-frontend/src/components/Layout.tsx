@@ -20,6 +20,7 @@ import {
   Business as BusinessIcon,
   Description as DescriptionIcon,
   Security as SecurityIcon,
+  FormatListNumbered as FormatListNumberedIcon,
   Logout as LogoutIcon,
 } from '@mui/icons-material';
 import { signOut } from 'aws-amplify/auth';
@@ -34,6 +35,7 @@ const menuItems = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
   { text: 'Empresas', icon: <BusinessIcon />, path: '/empresas' },
   { text: 'Certificados', icon: <SecurityIcon />, path: '/certificados' },
+  { text: 'Series', icon: <FormatListNumberedIcon />, path: '/series' },
   { text: 'Comprobantes', icon: <DescriptionIcon />, path: '/comprobantes' },
 ];
 

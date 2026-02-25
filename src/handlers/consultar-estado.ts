@@ -25,9 +25,9 @@ const BUCKET_NAME = process.env.COMPROBANTES_BUCKET || 'sunat-comprobantes';
  */
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    // Extraer parámetros de la ruta
-    const empresaRuc = event.pathParameters?.empresaRuc;
+    // Extraer parámetros de la ruta y query string
     const numero = event.pathParameters?.numero;
+    const empresaRuc = event.queryStringParameters?.empresaRuc;
 
     // Validar parámetros requeridos
     if (!empresaRuc || !numero) {
@@ -117,6 +117,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     if (comprobante.cdr?.fechaRecepcion) {
       response.fechaAceptacion = comprobante.cdr.fechaRecepcion;
+    }
+
+    // Incluir XML firmado si está disponible
+    if (comprobante.xmlFirmado) {
+      (response as any).xmlFirmado = comprobante.xmlFirmado;
     }
 
     return {

@@ -108,8 +108,20 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     console.log(`XML firmado recuperado - Tamaño: ${xmlFirmado.length} bytes`);
 
     // 5. Comprimir el XML en formato ZIP
-    const nombreArchivo = `${request.empresaRuc}-${comprobante.tipo}-${request.numeroComprobante}.xml`;
+    // IMPORTANTE: El nombre del archivo dentro del ZIP debe seguir el formato SUNAT
+    // Formato: {RUC}-{TipoDoc}-{Serie}-{Numero}.xml
+    // Ejemplo: 20123456789-01-F001-00000123.xml
+    // - RUC: 11 dígitos
+    // - TipoDoc: 2 dígitos (01=Factura, 03=Boleta)
+    // - Serie: 4 caracteres (F001, B001)
+    // - Número: 8 dígitos con ceros a la izquierda
+    // - Extensión: .xml (IMPORTANTE!)
+    const [serie, numero] = request.numeroComprobante.split('-');
+    const numeroPadded = numero.padStart(8, '0'); // Rellenar con ceros a la izquierda hasta 8 dígitos
+    const nombreArchivo = `${request.empresaRuc}-${comprobante.tipo}-${serie}-${numeroPadded}.xml`;
     const zipBuffer = await comprimirXML(xmlFirmado, nombreArchivo);
+
+    console.log(`Nombre del archivo en ZIP: ${nombreArchivo}`);
 
     console.log(`XML comprimido en ZIP - Tamaño: ${zipBuffer.length} bytes`);
 

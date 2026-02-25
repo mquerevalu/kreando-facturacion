@@ -13,9 +13,37 @@ import * as path from 'path';
  */
 function cargarCatalogos(): Record<string, Record<string, string>> {
   try {
-    const catalogosPath = path.join(__dirname, 'catalogos.json');
-    const catalogosData = fs.readFileSync(catalogosPath, 'utf-8');
-    return JSON.parse(catalogosData);
+    // En Lambda, los archivos están en /var/task
+    // Intentar múltiples rutas posibles
+    const posiblesRutas = [
+      path.join(__dirname, 'catalogos.json'),
+      path.join(__dirname, '../validators/catalogos.json'),
+      path.join(process.cwd(), 'src/validators/catalogos.json'),
+      path.join(process.cwd(), 'dist/validators/catalogos.json'),
+      '/var/task/src/validators/catalogos.json',
+      '/var/task/dist/validators/catalogos.json',
+    ];
+
+    for (const catalogosPath of posiblesRutas) {
+      try {
+        if (fs.existsSync(catalogosPath)) {
+          console.log(`Cargando catálogos desde: ${catalogosPath}`);
+          const catalogosData = fs.readFileSync(catalogosPath, 'utf-8');
+          return JSON.parse(catalogosData);
+        }
+      } catch (err) {
+        // Continuar con la siguiente ruta
+        continue;
+      }
+    }
+
+    console.error('No se pudo encontrar catalogos.json en ninguna ruta');
+    console.error('Rutas intentadas:', posiblesRutas);
+    console.error('__dirname:', __dirname);
+    console.error('process.cwd():', process.cwd());
+    
+    // Retornar catálogos vacíos en caso de error
+    return {};
   } catch (error) {
     console.error('Error al cargar catálogos:', error);
     // Retornar catálogos vacíos en caso de error

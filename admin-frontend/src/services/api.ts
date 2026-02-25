@@ -107,6 +107,28 @@ class ApiService {
     return response.data.data || response.data;
   }
 
+  // Series
+  async getSeries(empresaRuc: string) {
+    const response = await this.client.get(`/series/${empresaRuc}`);
+    return response.data.data || response.data;
+  }
+
+  async createSerie(data: any) {
+    const response = await this.client.post('/series', data);
+    return response.data.data || response.data;
+  }
+
+  async updateSerie(empresaRuc: string, tipoComprobante: string, serie: string, data: any) {
+    const response = await this.client.put(`/series/${empresaRuc}/${tipoComprobante}/${serie}`, data);
+    return response.data.data || response.data;
+  }
+
+  async deleteSerie(empresaRuc: string, tipoComprobante: string, serie: string) {
+    const response = await this.client.delete(`/series/${empresaRuc}/${tipoComprobante}/${serie}`);
+    return response.data || response.data;
+  }
+
+  // Comprobantes
   async generarComprobante(data: any) {
     const response = await this.client.post('/comprobantes/generar', data);
     return response.data.data || response.data;
@@ -146,8 +168,13 @@ class ApiService {
   async enviarComprobante(numero: string, empresaRuc: string) {
     const response = await this.client.post(`/comprobantes/${numero}/enviar`, {
       empresaRuc,
+      numeroComprobante: numero,
     });
     return response.data.data || response.data;
+  }
+
+  async enviarComprobanteSunat(numero: string, empresaRuc: string) {
+    return this.enviarComprobante(numero, empresaRuc);
   }
 
   async getEstadoComprobante(numero: string, empresaRuc: string) {
@@ -158,11 +185,19 @@ class ApiService {
   }
 
   async downloadPDF(numero: string, empresaRuc: string) {
-    const response = await this.client.get(`/comprobantes/${numero}/pdf`, {
-      params: { empresaRuc },
-      responseType: 'blob',
+    const response = await this.client.post(`/comprobantes/${numero}/pdf`, {
+      empresaRuc,
+      numero,
     });
-    return response.data;
+    
+    // El backend retorna el PDF como base64, necesitamos decodificarlo
+    const base64Data = response.data;
+    const binaryString = window.atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return new Blob([bytes], { type: 'application/pdf' });
   }
 }
 

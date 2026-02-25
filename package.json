@@ -4,7 +4,8 @@
   "description": "Sistema de Facturación Electrónica SUNAT - Arquitectura Serverless",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run copy-assets",
+    "copy-assets": "mkdir -p dist/validators && cp src/validators/catalogos.json dist/validators/ && mkdir -p src/handlers/data && cp node_modules/pdfkit/js/data/*.afm src/handlers/data/ 2>/dev/null || true",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
