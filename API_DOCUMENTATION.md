@@ -299,6 +299,51 @@ Envía el comprobante firmado a SUNAT.
 
 ### Consultas
 
+#### GET /comprobantes
+Lista comprobantes con filtros opcionales.
+
+**Query Parameters:**
+- `empresaRuc`: RUC de la empresa (requerido)
+- `tipo`: Tipo de comprobante (opcional) - "01" (Factura) o "03" (Boleta)
+- `estado`: Estado del comprobante (opcional) - "PENDIENTE", "ENVIADO", "ACEPTADO", "RECHAZADO"
+- `receptor`: Número de documento del receptor (opcional)
+- `nombre`: Nombre o razón social del receptor (opcional, búsqueda parcial)
+- `fechaInicio`: Fecha de inicio (opcional, formato ISO 8601)
+- `fechaFin`: Fecha de fin (opcional, formato ISO 8601)
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "comprobantes": [
+      {
+        "numero": "B001-00000001",
+        "tipo": "03",
+        "empresaRuc": "20123456789",
+        "fecha": "2024-01-15T10:30:00Z",
+        "receptor": {
+          "tipoDocumento": "1",
+          "numeroDocumento": "12345678",
+          "nombre": "Juan Pérez"
+        },
+        "subtotal": 200.00,
+        "igv": 36.00,
+        "total": 236.00,
+        "moneda": "PEN",
+        "estado": "ACEPTADO",
+        "cdr": {
+          "codigo": "0",
+          "mensaje": "La Factura ha sido aceptada",
+          "fechaRecepcion": "2024-01-15T10:35:00Z"
+        }
+      }
+    ],
+    "total": 1
+  }
+}
+```
+
 #### GET /comprobantes/{numero}/estado
 Consulta el estado de un comprobante.
 
@@ -494,6 +539,29 @@ curl -X POST https://api.example.com/dev/comprobantes/generar \
 ### Consultar estado
 ```bash
 curl -X GET "https://api.example.com/dev/comprobantes/B001-00000001/estado?empresaRuc=20123456789" \
+  -H "x-api-key: YOUR_API_KEY"
+```
+
+### Listar comprobantes
+```bash
+# Listar todos los comprobantes de una empresa
+curl -X GET "https://api.example.com/dev/comprobantes?empresaRuc=20123456789" \
+  -H "x-api-key: YOUR_API_KEY"
+
+# Listar solo facturas
+curl -X GET "https://api.example.com/dev/comprobantes?empresaRuc=20123456789&tipo=01" \
+  -H "x-api-key: YOUR_API_KEY"
+
+# Listar comprobantes aceptados
+curl -X GET "https://api.example.com/dev/comprobantes?empresaRuc=20123456789&estado=ACEPTADO" \
+  -H "x-api-key: YOUR_API_KEY"
+
+# Buscar por nombre del receptor
+curl -X GET "https://api.example.com/dev/comprobantes?empresaRuc=20123456789&nombre=Juan" \
+  -H "x-api-key: YOUR_API_KEY"
+
+# Buscar por rango de fechas
+curl -X GET "https://api.example.com/dev/comprobantes?empresaRuc=20123456789&fechaInicio=2024-01-01T00:00:00Z&fechaFin=2024-01-31T23:59:59Z" \
   -H "x-api-key: YOUR_API_KEY"
 ```
 

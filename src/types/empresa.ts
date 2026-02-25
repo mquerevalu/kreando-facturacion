@@ -33,8 +33,9 @@ export interface Empresa {
   razonSocial: string;
   nombreComercial: string;
   direccion: Direccion;
+  logoUrl?: string; // URL del logo en S3
   certificado?: Certificado; // Certificado digital de la empresa
-  credencialesSunat: Credenciales; // Credenciales SOL de la empresa
+  credencialesSunat?: Credenciales; // Credenciales SOL de la empresa
   activo: boolean;
   fechaRegistro: Date;
 }
@@ -47,6 +48,7 @@ export interface DatosEmpresa {
   razonSocial: string;
   nombreComercial: string;
   direccion: Direccion;
-  credencialesSunat: Credenciales;
+  logoUrl?: string; // URL del logo en S3
+  credencialesSunat?: Credenciales;
   activo?: boolean;
 }

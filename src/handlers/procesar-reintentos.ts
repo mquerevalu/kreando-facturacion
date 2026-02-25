@@ -200,12 +200,17 @@ async function procesarReintento(
       EstadoComprobante.ENVIADO
     );
 
+    // Validar que la empresa tenga credenciales SUNAT
+    if (!empresa.credencialesSunat) {
+      throw new Error(`La empresa ${empresaRuc} no tiene credenciales SUNAT configuradas`);
+    }
+
     // 7. Reintentar envío a SUNAT con reintentos automáticos
     console.log('Reintentando envío a SUNAT...');
 
     const retryResult = await retryManager.executeWithRetry(
       async () => {
-        return await sunatClient.enviarComprobante(empresaRuc, empresa.credencialesSunat, zipBuffer);
+        return await sunatClient.enviarComprobante(empresaRuc, empresa.credencialesSunat!, zipBuffer);
       },
       empresaRuc,
       numeroComprobante

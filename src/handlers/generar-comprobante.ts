@@ -240,12 +240,17 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       EstadoComprobante.ENVIADO
     );
 
+    // Validar que la empresa tenga credenciales SUNAT
+    if (!empresa.credencialesSunat) {
+      throw new Error(`La empresa ${request.empresaRuc} no tiene credenciales SUNAT configuradas`);
+    }
+
     // Enviar a SUNAT con reintentos automáticos
     const retryResult = await retryManager.executeWithRetry(
       async () => {
         return await sunatClient.enviarComprobante(
           request.empresaRuc,
-          empresa.credencialesSunat,
+          empresa.credencialesSunat!,
           zipBuffer
         );
       },

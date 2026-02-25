@@ -101,6 +101,21 @@ functions:
           method: put
           cors: true
           private: true
+      - http:
+          path: /empresas/{ruc}/logo
+          method: get
+          cors: true
+          private: true
+      - http:
+          path: /empresas/{ruc}/logo
+          method: post
+          cors: true
+          private: true
+      - http:
+          path: /empresas/{ruc}/credenciales-sol
+          method: put
+          cors: true
+          private: true
 
   generar-comprobante:
     handler: src/handlers/generar-comprobante.handler
@@ -138,6 +153,16 @@ functions:
     events:
       - http:
           path: /comprobantes/{numero}/estado
+          method: get
+          cors: true
+          private: true
+
+  listar-comprobantes:
+    handler: src/handlers/listar-comprobantes.handler
+    timeout: 30
+    events:
+      - http:
+          path: /comprobantes
           method: get
           cors: true
           private: true

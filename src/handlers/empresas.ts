@@ -12,6 +12,8 @@ import { DatosEmpresa, ApiResponse, Empresa } from '../types';
  * - PUT /empresas/{ruc} - Actualizar empresa
  * - GET /empresas - Listar todas las empresas
  * - DELETE /empresas/{ruc} - Eliminar empresa (soft delete)
+ * - POST /empresas/{ruc}/logo - Actualizar logo de empresa
+ * - PUT /empresas/{ruc}/credenciales-sol - Actualizar credenciales SOL
  */
 
 const repository = new DynamoDBEmpresaRepository();
@@ -306,6 +308,201 @@ async function eliminarEmpresa(ruc: string): Promise<APIGatewayProxyResult> {
 }
 
 /**
+ * Obtiene una URL pre-firmada del logo de una empresa
+ */
+async function obtenerLogoPresignedUrl(ruc: string): Promise<APIGatewayProxyResult> {
+  try {
+    const validacion = validarRUC(ruc);
+    if (!validacion.valido) {
+      return createResponse(400, {
+        success: false,
+        error: validacion.error,
+      });
+    }
+
+    // Obtener empresa para verificar que existe y tiene logo
+    const empresa = await repository.obtenerEmpresa(ruc);
+    if (!empresa) {
+      return createResponse(404, {
+        success: false,
+        error: `Empresa con RUC ${ruc} no encontrada`,
+      });
+    }
+
+    if (!empresa.logoUrl) {
+      return createResponse(404, {
+        success: false,
+        error: 'La empresa no tiene logo',
+      });
+    }
+
+    // Extraer la key del logo desde la URL almacenada
+    const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+    const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+    
+    const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-2' });
+    const bucketName = process.env.S3_BUCKET;
+    
+    // Extraer la key desde la URL (formato: https://bucket.s3.region.amazonaws.com/key)
+    const urlParts = empresa.logoUrl.split('.amazonaws.com/');
+    const key = urlParts.length > 1 ? urlParts[1] : `empresas/logos/${ruc}.png`;
+    
+    // Generar URL pre-firmada válida por 1 hora
+    const command = new GetObjectCommand({
+      Bucket: bucketName,
+      Key: key,
+    });
+    
+    const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+
+    return createResponse(200, {
+      success: true,
+      data: { presignedUrl },
+    });
+  } catch (error: any) {
+    console.error('Error al obtener URL pre-firmada del logo:', error);
+    return createResponse(500, {
+      success: false,
+      error: 'Error al obtener URL del logo',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Actualiza el logo de una empresa
+ */
+async function actualizarLogo(ruc: string, body: string): Promise<APIGatewayProxyResult> {
+  try {
+    const validacion = validarRUC(ruc);
+    if (!validacion.valido) {
+      return createResponse(400, {
+        success: false,
+        error: validacion.error,
+      });
+    }
+
+    const datos = JSON.parse(body);
+    const { logoBase64 } = datos;
+
+    if (!logoBase64) {
+      return createResponse(400, {
+        success: false,
+        error: 'Logo en base64 es requerido',
+      });
+    }
+
+    // Extraer el tipo de imagen y los datos base64
+    const matches = logoBase64.match(/^data:image\/(\w+);base64,(.+)$/);
+    if (!matches) {
+      return createResponse(400, {
+        success: false,
+        error: 'Formato de imagen inválido. Debe ser data:image/[tipo];base64,[datos]',
+      });
+    }
+
+    const imageType = matches[1]; // png, jpg, jpeg, etc.
+    const base64Data = matches[2];
+    const imageBuffer = Buffer.from(base64Data, 'base64');
+
+    // Subir a S3
+    const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+    const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-2' });
+    
+    const bucketName = process.env.S3_BUCKET;
+    const key = `empresas/logos/${ruc}.${imageType}`;
+    
+    await s3Client.send(new PutObjectCommand({
+      Bucket: bucketName,
+      Key: key,
+      Body: imageBuffer,
+      ContentType: `image/${imageType}`,
+      CacheControl: 'max-age=31536000', // 1 año
+    }));
+
+    // Construir URL del logo
+    const logoUrl = `https://${bucketName}.s3.${process.env.AWS_REGION || 'us-east-2'}.amazonaws.com/${key}`;
+
+    // Actualizar empresa con la URL del logo
+    await repository.actualizarEmpresa(ruc, { logoUrl });
+
+    return createResponse(200, {
+      success: true,
+      message: 'Logo actualizado exitosamente',
+      data: { logoUrl },
+    });
+  } catch (error: any) {
+    console.error('Error al actualizar logo:', error);
+
+    if (error.message.includes('no encontrada')) {
+      return createResponse(404, {
+        success: false,
+        error: error.message,
+      });
+    }
+
+    return createResponse(500, {
+      success: false,
+      error: 'Error al actualizar logo',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Actualiza las credenciales SOL de una empresa
+ */
+async function actualizarCredencialesSOL(ruc: string, body: string): Promise<APIGatewayProxyResult> {
+  try {
+    const validacion = validarRUC(ruc);
+    if (!validacion.valido) {
+      return createResponse(400, {
+        success: false,
+        error: validacion.error,
+      });
+    }
+
+    const datos = JSON.parse(body);
+    const { usuario, password } = datos;
+
+    if (!usuario || !password) {
+      return createResponse(400, {
+        success: false,
+        error: 'Usuario y contraseña SOL son requeridos',
+      });
+    }
+
+    await repository.actualizarEmpresa(ruc, {
+      credencialesSunat: {
+        ruc,
+        usuario,
+        password,
+      },
+    });
+
+    return createResponse(200, {
+      success: true,
+      message: 'Credenciales SOL actualizadas exitosamente',
+    });
+  } catch (error: any) {
+    console.error('Error al actualizar credenciales SOL:', error);
+
+    if (error.message.includes('no encontrada')) {
+      return createResponse(404, {
+        success: false,
+        error: error.message,
+      });
+    }
+
+    return createResponse(500, {
+      success: false,
+      error: 'Error al actualizar credenciales SOL',
+      message: error.message,
+    });
+  }
+}
+
+/**
  * Handler principal
  */
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -325,6 +522,21 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // GET /empresas - Listar todas las empresas
     if (method === 'GET' && path === '/empresas') {
       return await listarEmpresas();
+    }
+
+    // GET /empresas/{ruc}/logo - Obtener URL pre-firmada del logo (debe ir antes de GET /empresas/{ruc})
+    if (method === 'GET' && pathParameters?.ruc && path.includes('/logo')) {
+      return await obtenerLogoPresignedUrl(pathParameters.ruc);
+    }
+
+    // POST /empresas/{ruc}/logo - Actualizar logo (debe ir antes de GET /empresas/{ruc})
+    if (method === 'POST' && pathParameters?.ruc && path.includes('/logo')) {
+      return await actualizarLogo(pathParameters.ruc, body);
+    }
+
+    // PUT /empresas/{ruc}/credenciales-sol - Actualizar credenciales SOL (debe ir antes de PUT /empresas/{ruc})
+    if (method === 'PUT' && pathParameters?.ruc && path.includes('/credenciales-sol')) {
+      return await actualizarCredencialesSOL(pathParameters.ruc, body);
     }
 
     // GET /empresas/{ruc} - Obtener empresa por RUC

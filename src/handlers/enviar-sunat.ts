@@ -120,6 +120,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       EstadoComprobante.ENVIADO
     );
 
+    // Validar que la empresa tenga credenciales SUNAT
+    if (!empresa.credencialesSunat) {
+      throw new Error(`La empresa ${request.empresaRuc} no tiene credenciales SUNAT configuradas`);
+    }
+
     // 7. Enviar a SUNAT con reintentos automáticos
     console.log('Enviando comprobante a SUNAT con reintentos automáticos...');
     
@@ -127,7 +132,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       async () => {
         return await sunatClient.enviarComprobante(
           request.empresaRuc,
-          empresa.credencialesSunat,
+          empresa.credencialesSunat!,
           zipBuffer
         );
       },

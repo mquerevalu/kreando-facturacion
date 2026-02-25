@@ -76,6 +76,9 @@ export class DynamoDBEmpresaRepository implements EmpresaRepository {
    * Actualiza los datos de una empresa
    */
   async actualizarEmpresa(ruc: string, datos: Partial<DatosEmpresa>): Promise<Empresa> {
+    // Log para depuración
+    console.log('actualizarEmpresa - datos recibidos:', JSON.stringify(datos, null, 2));
+    
     // Construir expresión de actualización dinámicamente
     const updateExpressions: string[] = [];
     const expressionAttributeNames: Record<string, string> = {};
@@ -99,6 +102,12 @@ export class DynamoDBEmpresaRepository implements EmpresaRepository {
       expressionAttributeValues[':direccion'] = datos.direccion;
     }
 
+    if (datos.logoUrl !== undefined) {
+      updateExpressions.push('#logoUrl = :logoUrl');
+      expressionAttributeNames['#logoUrl'] = 'logoUrl';
+      expressionAttributeValues[':logoUrl'] = datos.logoUrl;
+    }
+
     if (datos.credencialesSunat !== undefined) {
       updateExpressions.push('#credencialesSunat = :credencialesSunat');
       expressionAttributeNames['#credencialesSunat'] = 'credencialesSunat';
@@ -112,6 +121,9 @@ export class DynamoDBEmpresaRepository implements EmpresaRepository {
     }
 
     if (updateExpressions.length === 0) {
+      console.log('actualizarEmpresa - No hay expresiones de actualización');
+      console.log('actualizarEmpresa - datos:', datos);
+      console.log('actualizarEmpresa - keys:', Object.keys(datos));
       throw new Error('No hay datos para actualizar');
     }
 

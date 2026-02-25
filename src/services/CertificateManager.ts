@@ -7,6 +7,15 @@
 
 import { Certificado } from '../types/empresa';
 import { ValidationResult } from '../types/common';
+import { 
+  SecretsManagerClient, 
+  GetSecretValueCommand, 
+  CreateSecretCommand,
+  UpdateSecretCommand,
+  ResourceNotFoundException 
+} from '@aws-sdk/client-secrets-manager';
+
+const secretsClient = new SecretsManagerClient({ region: process.env.AWS_REGION || 'us-east-2' });
 
 /**
  * Interfaz del gestor de certificados
@@ -111,25 +120,31 @@ export class CertificateManager implements ICertificateManager {
       emisor: certificadoInfo.emisor,
     };
 
-    // Almacenar certificado
+    // Almacenar certificado en memoria (para compatibilidad con tests)
     this.certificados.set(empresaRuc, certificado);
 
-    // TODO: En producción, almacenar en AWS Secrets Manager
-    // await this.almacenarEnSecretsManager(empresaRuc, certificado);
+    // Almacenar en AWS Secrets Manager
+    await this.almacenarEnSecretsManager(empresaRuc, certificado);
   }
 
   /**
    * Obtiene el certificado de una empresa
    */
   async obtenerCertificado(empresaRuc: string): Promise<Certificado> {
-    // TODO: En producción, recuperar de AWS Secrets Manager
-    const certificado = this.certificados.get(empresaRuc);
-
-    if (!certificado) {
-      throw new Error(`No existe certificado para la empresa con RUC ${empresaRuc}`);
+    // Intentar obtener de Secrets Manager primero
+    try {
+      const certificado = await this.obtenerDeSecretsManager(empresaRuc);
+      // Actualizar cache en memoria
+      this.certificados.set(empresaRuc, certificado);
+      return certificado;
+    } catch (error) {
+      // Si no está en Secrets Manager, intentar obtener de memoria
+      const certificado = this.certificados.get(empresaRuc);
+      if (!certificado) {
+        throw new Error(`No existe certificado para la empresa con RUC ${empresaRuc}`);
+      }
+      return certificado;
     }
-
-    return certificado;
   }
 
   /**
@@ -284,5 +299,68 @@ export class CertificateManager implements ICertificateManager {
     const milisegundosPorDia = 1000 * 60 * 60 * 24;
     const diferencia = hasta.getTime() - desde.getTime();
     return Math.ceil(diferencia / milisegundosPorDia);
+  }
+
+  /**
+   * Almacena un certificado en AWS Secrets Manager
+   * @private
+   */
+  private async almacenarEnSecretsManager(empresaRuc: string, certificado: Certificado): Promise<void> {
+    const secretName = `sunat/certificados/${empresaRuc}`;
+    
+    const secretValue = JSON.stringify({
+      ruc: certificado.ruc,
+      archivo: certificado.archivo.toString('base64'),
+      password: certificado.password,
+      fechaEmision: certificado.fechaEmision.toISOString(),
+      fechaVencimiento: certificado.fechaVencimiento.toISOString(),
+      emisor: certificado.emisor,
+    });
+
+    try {
+      // Intentar actualizar el secreto existente
+      await secretsClient.send(new UpdateSecretCommand({
+        SecretId: secretName,
+        SecretString: secretValue,
+      }));
+    } catch (error: any) {
+      if (error instanceof ResourceNotFoundException) {
+        // Si no existe, crear uno nuevo
+        await secretsClient.send(new CreateSecretCommand({
+          Name: secretName,
+          SecretString: secretValue,
+          Description: `Certificado digital para empresa RUC ${empresaRuc}`,
+        }));
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Obtiene un certificado de AWS Secrets Manager
+   * @private
+   */
+  private async obtenerDeSecretsManager(empresaRuc: string): Promise<Certificado> {
+    const secretName = `sunat/certificados/${empresaRuc}`;
+    
+    const response = await secretsClient.send(new GetSecretValueCommand({
+      SecretId: secretName,
+    }));
+
+    if (!response.SecretString) {
+      throw new Error(`No se pudo obtener el certificado para RUC ${empresaRuc}`);
+    }
+
+    const secretData = JSON.parse(response.SecretString);
+    
+    return {
+      ruc: secretData.ruc,
+      archivo: Buffer.from(secretData.archivo, 'base64'),
+      password: secretData.password,
+      fechaEmision: new Date(secretData.fechaEmision),
+      fechaVencimiento: new Date(secretData.fechaVencimiento),
+      emisor: secretData.emisor,
+    };
   }
 }
