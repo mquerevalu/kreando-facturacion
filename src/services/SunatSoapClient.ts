@@ -169,23 +169,26 @@ export class SunatSoapClient implements ISunatSoapClient {
       // Convertir el ZIP a base64
       const zipBase64 = zip.toString('base64');
 
-      // Extraer el nombre del archivo del ZIP para usarlo en la petición
+      // Extraer el nombre del archivo XML del ZIP para construir el nombre del ZIP
       const zipObj = new JSZip();
       const zipContent = await zipObj.loadAsync(zip);
       const files = Object.keys(zipContent.files);
-      let nombreArchivo = files[0] || 'documento.xml';
+      let nombreXml = files[0] || 'documento.xml';
       
-      // IMPORTANTE: SUNAT requiere el nombre SIN la extensión .xml
-      // El archivo dentro del ZIP debe tener .xml, pero el fileName en SOAP debe ser sin extensión
-      if (nombreArchivo.endsWith('.xml')) {
-        nombreArchivo = nombreArchivo.slice(0, -4); // Remover .xml
+      // IMPORTANTE: SUNAT requiere que fileName sea el nombre del ZIP (CON extensión .zip)
+      // El nombre debe ser: {RUC}-{TipoDoc}-{Serie}-{Numero}.zip
+      // Ejemplo: 20123456789-03-B001-00000001.zip
+      let nombreZip = nombreXml;
+      if (nombreZip.endsWith('.xml')) {
+        nombreZip = nombreZip.slice(0, -4); // Remover .xml
       }
+      nombreZip = nombreZip + '.zip'; // Agregar .zip
 
-      console.log(`Enviando a SUNAT - fileName: ${nombreArchivo}`);
+      console.log(`Enviando a SUNAT - fileName: ${nombreZip}`);
 
       // Llamar al método sendBill del servicio SOAP
       const [result] = await client.sendBillAsync({
-        fileName: nombreArchivo,
+        fileName: nombreZip,
         contentFile: zipBase64,
       });
 
