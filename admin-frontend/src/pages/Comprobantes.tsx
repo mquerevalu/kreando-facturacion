@@ -232,6 +232,16 @@ export default function Comprobantes() {
         />
       ),
     },
+    { 
+      field: 'fecha', 
+      headerName: 'Fecha Emisión', 
+      width: 130,
+      valueFormatter: (params) => {
+        const value = params.value as string;
+        if (!value) return '';
+        return new Date(value).toLocaleDateString('es-PE');
+      },
+    },
     { field: 'empresaRuc', headerName: 'RUC Empresa', width: 130 },
     { 
       field: 'receptorDocumento', 
@@ -242,7 +252,7 @@ export default function Comprobantes() {
     { 
       field: 'receptorNombre', 
       headerName: 'Receptor', 
-      width: 200,
+      width: 180,
       valueGetter: (params) => params.row.receptor?.nombre || params.row.receptor?.razonSocial || '',
     },
     { 

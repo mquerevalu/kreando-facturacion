@@ -202,7 +202,7 @@ export class DynamoDBComprobanteRepository implements ComprobanteRepository {
       });
     } else if (filtros?.fechaInicio || filtros?.fechaFin) {
       // Usar GSI por fecha
-      const keyCondition = '#empresaRuc = :empresaRuc';
+      let keyCondition = '#empresaRuc = :empresaRuc';
       const expressionAttributeNames: Record<string, string> = {
         '#empresaRuc': 'empresaRuc',
       };
@@ -211,8 +211,17 @@ export class DynamoDBComprobanteRepository implements ComprobanteRepository {
       };
 
       if (filtros.fechaInicio && filtros.fechaFin) {
+        keyCondition += ' AND #fecha BETWEEN :fechaInicio AND :fechaFin';
         expressionAttributeNames['#fecha'] = 'fecha';
         expressionAttributeValues[':fechaInicio'] = filtros.fechaInicio.toISOString();
+        expressionAttributeValues[':fechaFin'] = filtros.fechaFin.toISOString();
+      } else if (filtros.fechaInicio) {
+        keyCondition += ' AND #fecha >= :fechaInicio';
+        expressionAttributeNames['#fecha'] = 'fecha';
+        expressionAttributeValues[':fechaInicio'] = filtros.fechaInicio.toISOString();
+      } else if (filtros.fechaFin) {
+        keyCondition += ' AND #fecha <= :fechaFin';
+        expressionAttributeNames['#fecha'] = 'fecha';
         expressionAttributeValues[':fechaFin'] = filtros.fechaFin.toISOString();
       }
 

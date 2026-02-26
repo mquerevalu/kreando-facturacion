@@ -19,47 +19,53 @@ export interface IPDFGenerator {
  * Implementación del generador de PDF
  */
 export class PDFGenerator implements IPDFGenerator {
+  // Colores del tema
+  private readonly colors = {
+    primary: '#2563eb',      // Azul
+    secondary: '#64748b',    // Gris
+    success: '#10b981',      // Verde
+    text: '#1e293b',         // Texto oscuro
+    textLight: '#64748b',    // Texto claro
+    border: '#e2e8f0',       // Borde claro
+    background: '#f8fafc',   // Fondo claro
+  };
+
   /**
    * Genera un PDF con la representación impresa del comprobante
    */
   async generarPDF(comprobante: Comprobante, empresa: Empresa, logoBuffer?: Buffer, cdr?: CDR): Promise<Buffer> {
     return new Promise(async (resolve, reject) => {
       try {
-        // Create PDF without specifying fonts - let PDFKit use built-in fonts
         const doc = new PDFDocument({ 
           size: 'A4', 
-          margin: 40,
+          margin: 50,
           bufferPages: true
         });
-        
         const chunks: Buffer[] = [];
 
         doc.on('data', (chunk) => chunks.push(chunk));
         doc.on('end', () => resolve(Buffer.concat(chunks)));
         doc.on('error', reject);
 
-        // Generar código QR
-        const qrDataURL = await this.generarCodigoQR(comprobante);
-
         // Encabezado con logo y datos de la empresa
-        await this.agregarEncabezado(doc, empresa, logoBuffer);
+        await this.agregarEncabezado(doc, empresa, comprobante, logoBuffer);
 
-        // Cuadro de tipo de comprobante (derecha superior)
-        this.agregarCuadroComprobante(doc, comprobante);
+        // Línea separadora
+        doc.moveTo(50, 180).lineTo(545, 180).stroke(this.colors.border);
 
         // Datos del cliente
-        doc.moveDown(2);
+        doc.moveDown(0.5);
         this.agregarDatosCliente(doc, comprobante);
+
+        // Línea separadora
+        doc.moveTo(50, doc.y + 10).lineTo(545, doc.y + 10).stroke(this.colors.border);
 
         // Tabla de items
         doc.moveDown(1);
         this.agregarTablaItems(doc, comprobante);
 
-        // Totales y observaciones
-        this.agregarTotalesYObservaciones(doc, comprobante);
-
-        // Código QR
-        doc.image(qrDataURL, 450, doc.page.height - 200, { width: 120 });
+        // Totales
+        this.agregarTotales(doc, comprobante);
 
         // Pie de página
         this.agregarPiePagina(doc, comprobante, cdr);
@@ -95,199 +101,269 @@ export class PDFGenerator implements IPDFGenerator {
       errorCorrectionLevel: 'M',
       type: 'image/png',
       width: 200,
+      margin: 1,
     });
   }
 
   /**
    * Agrega el encabezado con logo y datos del emisor
    */
-  private async agregarEncabezado(doc: PDFKit.PDFDocument, empresa: Empresa, logoBuffer?: Buffer): Promise<void> {
+  private async agregarEncabezado(doc: PDFKit.PDFDocument, empresa: Empresa, comprobante: Comprobante, logoBuffer?: Buffer): Promise<void> {
     const startY = 50;
     
     // Logo (si existe)
     if (logoBuffer) {
       try {
-        doc.image(logoBuffer, 50, startY, { width: 120, height: 60, fit: [120, 60] });
+        doc.image(logoBuffer, 50, startY, { width: 100, height: 50, fit: [100, 50] });
       } catch (error) {
         console.log('Error al agregar logo:', error);
       }
     }
 
-    // Cuadro con datos de la empresa
-    const boxX = 50;
-    const boxY = startY + 70;
-    const boxWidth = 280;
-    const boxHeight = 90;
+    // Datos de la empresa (lado izquierdo)
+    const empresaX = logoBuffer ? 160 : 50;
+    doc.fontSize(14)
+      .fillColor(this.colors.text)
+      .font('Helvetica-Bold')
+      .text(empresa.razonSocial.toUpperCase(), empresaX, startY, { width: 250 });
 
-    doc.rect(boxX, boxY, boxWidth, boxHeight).stroke();
+    doc.fontSize(9)
+      .fillColor(this.colors.textLight)
+      .font('Helvetica')
+      .text(`RUC: ${empresa.ruc}`, empresaX, startY + 20)
+      .text(empresa.direccion.direccion, empresaX, startY + 35, { width: 250 })
+      .text(`${empresa.direccion.distrito} - ${empresa.direccion.provincia} - ${empresa.direccion.departamento}`, empresaX, startY + 50, { width: 250 });
 
-    doc.text(empresa.razonSocial.toUpperCase(), boxX + 10, boxY + 10, { width: boxWidth - 20 });
-
-    doc.text(`Dirección: ${empresa.direccion.direccion}`, boxX + 10, boxY + 30, { width: boxWidth - 20 })
-      .text(`${empresa.direccion.distrito} - ${empresa.direccion.provincia} - ${empresa.direccion.departamento}`, boxX + 10, boxY + 45, { width: boxWidth - 20 });
-  }
-
-  /**
-   * Agrega el cuadro de tipo de comprobante (derecha superior)
-   */
-  private agregarCuadroComprobante(doc: PDFKit.PDFDocument, comprobante: Comprobante): void {
-    const boxX = 360;
-    const boxY = 50;
-    const boxWidth = 190;
+    // Cuadro de tipo de comprobante (derecha superior)
+    const boxX = 420;
+    const boxY = startY;
+    const boxWidth = 125;
     const boxHeight = 110;
 
-    // Cuadro principal
-    doc.rect(boxX, boxY, boxWidth, boxHeight).stroke();
+    // Fondo del cuadro
+    doc.rect(boxX, boxY, boxWidth, boxHeight)
+      .fillAndStroke(this.colors.background, this.colors.border);
 
-    // Título
+    // Título del comprobante
     const tipoNombre = comprobante.tipo === '01' ? 'FACTURA' : 'BOLETA DE VENTA';
-    doc.text(tipoNombre, boxX, boxY + 10, { width: boxWidth, align: 'center' });
+    doc.fontSize(13)
+      .fillColor(this.colors.primary)
+      .font('Helvetica-Bold')
+      .text(tipoNombre, boxX, boxY + 15, { width: boxWidth, align: 'center' });
     
-    doc.text('ELECTRÓNICA', boxX, boxY + 28, { width: boxWidth, align: 'center' });
+    doc.fontSize(10)
+      .fillColor(this.colors.text)
+      .font('Helvetica')
+      .text('ELECTRÓNICA', boxX, boxY + 32, { width: boxWidth, align: 'center' });
 
     // RUC
-    doc.text(`R.U.C: ${comprobante.emisor.ruc}`, boxX, boxY + 50, { width: boxWidth, align: 'center' });
+    doc.fontSize(9)
+      .fillColor(this.colors.textLight)
+      .text(`RUC: ${comprobante.emisor.ruc}`, boxX, boxY + 52, { width: boxWidth, align: 'center' });
 
     // Número de comprobante
-    doc.text(comprobante.numero, boxX, boxY + 75, { width: boxWidth, align: 'center' });
+    doc.fontSize(16)
+      .fillColor(this.colors.primary)
+      .font('Helvetica-Bold')
+      .text(comprobante.numero, boxX, boxY + 75, { width: boxWidth, align: 'center' });
   }
 
   /**
    * Agrega datos del cliente
    */
   private agregarDatosCliente(doc: PDFKit.PDFDocument, comprobante: Comprobante): void {
-    const startY = doc.y + 10;
-    const boxX = 50;
-    const boxWidth = 500;
+    const startY = doc.y + 15;
+    const labelWidth = 120;
+    const valueX = 50 + labelWidth;
 
-    // Primera línea: Razón Social y RUC
-    doc.text(`Razón Social: ${comprobante.receptor.nombre}`, boxX, startY);
-    doc.text(`RUC: ${comprobante.receptor.numeroDocumento}`, boxX + 300, startY);
+    doc.fontSize(10)
+      .fillColor(this.colors.text)
+      .font('Helvetica-Bold')
+      .text('DATOS DEL CLIENTE', 50, startY);
 
-    // Segunda línea: Fecha Emisión y Dirección
-    doc.text(`Fecha Emisión: ${this.formatearFecha(comprobante.fecha)}`, boxX, startY + 15);
+    doc.fontSize(8)
+      .fillColor(this.colors.textLight)
+      .font('Helvetica')
+      .text('Cliente:', 50, startY + 18, { width: labelWidth })
+      .fillColor(this.colors.text)
+      .text(comprobante.receptor.nombre, valueX, startY + 18, { width: 350 });
+
+    doc.fillColor(this.colors.textLight)
+      .text(`${comprobante.receptor.tipoDocumento === '6' ? 'RUC' : 'DNI'}:`, 50, startY + 32, { width: labelWidth })
+      .fillColor(this.colors.text)
+      .text(comprobante.receptor.numeroDocumento, valueX, startY + 32);
+
     if (comprobante.receptor.direccion) {
-      doc.text(`Dirección: ${comprobante.receptor.direccion.direccion}`, boxX + 300, startY + 15);
+      doc.fillColor(this.colors.textLight)
+        .text('Dirección:', 50, startY + 46, { width: labelWidth })
+        .fillColor(this.colors.text)
+        .text(comprobante.receptor.direccion.direccion, valueX, startY + 46, { width: 350 });
     }
 
-    // Tercera línea: Tipo Moneda
-    doc.text(`Tipo Moneda: ${comprobante.moneda}`, boxX, startY + 30);
+    doc.fillColor(this.colors.textLight)
+      .text('Fecha Emisión:', 50, startY + 60, { width: labelWidth })
+      .fillColor(this.colors.text)
+      .text(this.formatearFecha(comprobante.fecha), valueX, startY + 60);
 
-    doc.moveDown(2);
+    doc.fillColor(this.colors.textLight)
+      .text('Moneda:', 50, startY + 74, { width: labelWidth })
+      .fillColor(this.colors.text)
+      .text(comprobante.moneda === 'PEN' ? 'Soles (PEN)' : comprobante.moneda, valueX, startY + 74);
+
+    doc.y = startY + 88;
   }
 
   /**
    * Agrega tabla de items
    */
   private agregarTablaItems(doc: PDFKit.PDFDocument, comprobante: Comprobante): void {
-    const tableTop = doc.y + 10;
+    const tableTop = doc.y + 15;
     const colWidths = {
-      cantidad: 70,
-      codigo: 70,
-      descripcion: 200,
-      valorUnitario: 80,
-      valorTotal: 80,
+      cantidad: 60,
+      codigo: 80,
+      descripcion: 220,
+      precioUnit: 80,
+      total: 80,
     };
 
-    // Encabezados de tabla
+    // Encabezado de tabla con fondo
     let x = 50;
     const headerY = tableTop;
+    const headerHeight = 22;
 
-    doc.rect(x, headerY, colWidths.cantidad, 20).stroke();
-    doc.text('Cantidad', x + 5, headerY + 5, { width: colWidths.cantidad - 10 });
+    doc.rect(x, headerY, 520, headerHeight)
+      .fillAndStroke(this.colors.primary, this.colors.primary);
+
+    doc.fontSize(8)
+      .fillColor('#ffffff')
+      .font('Helvetica-Bold');
+
+    // Headers
+    doc.text('CANT.', x + 5, headerY + 7, { width: colWidths.cantidad - 10 });
     x += colWidths.cantidad;
 
-    doc.rect(x, headerY, colWidths.codigo, 20).stroke();
-    doc.text('Código', x + 5, headerY + 5, { width: colWidths.codigo - 10 });
+    doc.text('CÓDIGO', x + 5, headerY + 7, { width: colWidths.codigo - 10 });
     x += colWidths.codigo;
 
-    doc.rect(x, headerY, colWidths.descripcion, 20).stroke();
-    doc.text('Descripción', x + 5, headerY + 5, { width: colWidths.descripcion - 10 });
+    doc.text('DESCRIPCIÓN', x + 5, headerY + 7, { width: colWidths.descripcion - 10 });
     x += colWidths.descripcion;
 
-    doc.rect(x, headerY, colWidths.valorUnitario, 20).stroke();
-    doc.text('Valor Unitario', x + 5, headerY + 5, { width: colWidths.valorUnitario - 10 });
-    x += colWidths.valorUnitario;
+    doc.text('P. UNIT.', x + 5, headerY + 7, { width: colWidths.precioUnit - 10, align: 'right' });
+    x += colWidths.precioUnit;
 
-    doc.rect(x, headerY, colWidths.valorTotal, 20).stroke();
-    doc.text('Valor Total', x + 5, headerY + 5, { width: colWidths.valorTotal - 10 });
+    doc.text('TOTAL', x + 5, headerY + 7, { width: colWidths.total - 10, align: 'right' });
 
     // Items
-    let y = headerY + 20;
+    let y = headerY + headerHeight;
+    doc.fontSize(8)
+      .fillColor(this.colors.text)
+      .font('Helvetica');
 
-    comprobante.items.forEach((item) => {
-      const rowHeight = 20;
+    comprobante.items.forEach((item, index) => {
+      const rowHeight = 25;
       x = 50;
 
-      doc.rect(x, y, colWidths.cantidad, rowHeight).stroke();
-      doc.text(`${item.cantidad} ${item.unidadMedida}`, x + 5, y + 5, { width: colWidths.cantidad - 10 });
+      // Fondo alternado
+      if (index % 2 === 0) {
+        doc.rect(x, y, 520, rowHeight).fill(this.colors.background);
+      }
+
+      doc.fillColor(this.colors.text);
+
+      doc.text(`${item.cantidad}`, x + 5, y + 8, { width: colWidths.cantidad - 10 });
       x += colWidths.cantidad;
 
-      doc.rect(x, y, colWidths.codigo, rowHeight).stroke();
-      doc.text(item.codigo || '', x + 5, y + 5, { width: colWidths.codigo - 10 });
+      doc.text(item.codigo || '-', x + 5, y + 8, { width: colWidths.codigo - 10 });
       x += colWidths.codigo;
 
-      doc.rect(x, y, colWidths.descripcion, rowHeight).stroke();
-      doc.text(item.descripcion, x + 5, y + 5, { width: colWidths.descripcion - 10 });
+      doc.text(item.descripcion, x + 5, y + 8, { width: colWidths.descripcion - 10 });
       x += colWidths.descripcion;
 
-      doc.rect(x, y, colWidths.valorUnitario, rowHeight).stroke();
-      doc.text(`S/ ${this.formatearMonto(item.precioUnitario)}`, x + 5, y + 5, { width: colWidths.valorUnitario - 10, align: 'right' });
-      x += colWidths.valorUnitario;
+      doc.text(`S/ ${this.formatearMonto(item.precioUnitario)}`, x + 5, y + 8, { width: colWidths.precioUnit - 10, align: 'right' });
+      x += colWidths.precioUnit;
 
-      doc.rect(x, y, colWidths.valorTotal, rowHeight).stroke();
-      doc.text(`S/ ${this.formatearMonto(item.total)}`, x + 5, y + 5, { width: colWidths.valorTotal - 10, align: 'right' });
+      doc.text(`S/ ${this.formatearMonto(item.total)}`, x + 5, y + 8, { width: colWidths.total - 10, align: 'right' });
 
       y += rowHeight;
     });
 
-    doc.y = y + 10;
+    // Borde de la tabla
+    doc.rect(50, tableTop, 520, y - tableTop).stroke(this.colors.border);
+
+    doc.y = y + 5;
   }
 
   /**
-   * Agrega totales y observaciones
+   * Agrega totales alineados a la derecha con la columna TOTAL
    */
-  private agregarTotalesYObservaciones(doc: PDFKit.PDFDocument, comprobante: Comprobante): void {
-    const startY = doc.y;
-    const leftX = 50;
-    const rightX = 370;
+  private agregarTotales(doc: PDFKit.PDFDocument, comprobante: Comprobante): void {
+    const startY = doc.y + 15;
+    
+    // Alineación con la columna TOTAL de los items
+    // La tabla termina en x=570 (50 + 520)
+    // Las últimas dos columnas son: precioUnit (80px) + total (80px)
+    const labelX = 370; // Inicio de las dos últimas columnas
+    const valueX = 490; // Columna TOTAL (alineada con los totales de items)
+    const boxWidth = 200;
+    const boxHeight = 90;
 
-    // Lado izquierdo: Observaciones
-    doc.text('CIENTO DIECIOCHO CON 00/100', leftX, startY);
+    // Cuadro de totales
+    doc.rect(labelX, startY, boxWidth, boxHeight)
+      .fillAndStroke(this.colors.background, this.colors.border);
 
-    doc.text('Información Adicional', leftX, startY + 20);
+    doc.fontSize(9)
+      .fillColor(this.colors.textLight)
+      .font('Helvetica');
 
-    doc.text('LEYENDA:', leftX, startY + 40);
-    doc.text('CONDICION DE PAGO: Efectivo', leftX, startY + 60);
-    doc.text('VENDEDOR: GITHUB SELLER', leftX, startY + 80);
+    let y = startY + 15;
 
-    // Lado derecho: Totales
-    let y = startY;
+    // Subtotal
+    doc.text('Op. Gravadas:', labelX + 15, y, { width: 100 });
+    doc.fillColor(this.colors.text)
+      .font('Helvetica-Bold')
+      .text(`S/ ${this.formatearMonto(comprobante.subtotal)}`, valueX, y, { width: 70, align: 'right' });
+    y += 22;
 
-    doc.text('Op. Gravadas:', rightX, y);
-    doc.text(`S/ ${this.formatearMonto(comprobante.subtotal)}`, rightX + 100, y, { align: 'right' });
-    y += 20;
+    // IGV
+    doc.fillColor(this.colors.textLight)
+      .font('Helvetica')
+      .text('I.G.V. (18%):', labelX + 15, y, { width: 100 });
+    doc.fillColor(this.colors.text)
+      .font('Helvetica-Bold')
+      .text(`S/ ${this.formatearMonto(comprobante.igv)}`, valueX, y, { width: 70, align: 'right' });
+    y += 28;
 
-    doc.text('I.G.V.:', rightX, y);
-    doc.text(`S/ ${this.formatearMonto(comprobante.igv)}`, rightX + 100, y, { align: 'right' });
-    y += 20;
-
-    doc.text('Precio Venta:', rightX, y);
-    doc.text(`S/ ${this.formatearMonto(comprobante.total)}`, rightX + 100, y, { align: 'right' });
+    // Total
+    doc.fontSize(12)
+      .fillColor(this.colors.primary)
+      .font('Helvetica-Bold')
+      .text('TOTAL:', labelX + 15, y, { width: 100 });
+    doc.text(`S/ ${this.formatearMonto(comprobante.total)}`, valueX, y, { width: 70, align: 'right' });
+    
+    doc.y = startY + boxHeight + 15;
   }
 
   /**
    * Agrega pie de página
    */
   private agregarPiePagina(doc: PDFKit.PDFDocument, comprobante: Comprobante, cdr?: CDR): void {
-    const pageHeight = doc.page.height;
-    const y = pageHeight - 120;
+    const y = doc.y + 20;
+
+    // Línea separadora
+    doc.moveTo(50, y).lineTo(545, y).stroke(this.colors.border);
+
+    doc.fontSize(8)
+      .fillColor(this.colors.textLight)
+      .font('Helvetica')
+      .text('Representación impresa del comprobante electrónico.', 50, y + 15, { align: 'center', width: 300 });
 
     if (cdr) {
-      doc.text(`Nro Resolución: ${cdr.codigo}`, 50, y);
+      doc.fontSize(7)
+        .text(`Código SUNAT: ${cdr.codigo} - ${cdr.mensaje}`, 50, y + 30, { align: 'center', width: 300 });
     }
 
-    doc.text('Representación impresa de la FACTURA ELECTRÓNICA.', 50, y + 20, { align: 'center', width: 350 });
+    doc.fontSize(7)
+      .text(`Generado: ${new Date().toLocaleString('es-PE')}`, 50, y + 45, { align: 'center', width: 300 });
   }
 
   /**
