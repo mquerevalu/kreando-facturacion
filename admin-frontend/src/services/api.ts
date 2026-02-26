@@ -199,6 +199,29 @@ class ApiService {
     }
     return new Blob([bytes], { type: 'application/pdf' });
   }
+
+  async downloadXML(numero: string, empresaRuc: string) {
+    const data = await this.getEstadoComprobante(numero, empresaRuc);
+    
+    if (!data.xmlFirmado) {
+      throw new Error('El XML firmado no está disponible');
+    }
+
+    // Crear blob con el XML
+    return new Blob([data.xmlFirmado], { type: 'application/xml' });
+  }
+
+  async downloadCDR(numero: string, empresaRuc: string) {
+    const data = await this.getEstadoComprobante(numero, empresaRuc);
+    
+    if (!data.cdr || !data.cdr.urlDescarga) {
+      throw new Error('El CDR no está disponible. El comprobante debe estar ACEPTADO por SUNAT.');
+    }
+
+    // Descargar desde la URL pre-firmada
+    const response = await fetch(data.cdr.urlDescarga);
+    return await response.blob();
+  }
 }
 
 const apiService = new ApiService();

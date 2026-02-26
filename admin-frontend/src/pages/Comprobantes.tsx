@@ -50,6 +50,9 @@ export default function Comprobantes() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [sendingToSunat, setSendingToSunat] = useState<string | null>(null);
+  const [downloadingPDF, setDownloadingPDF] = useState<string | null>(null);
+  const [downloadingXML, setDownloadingXML] = useState<string | null>(null);
+  const [downloadingCDR, setDownloadingCDR] = useState<string | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     numero: string;
@@ -112,6 +115,8 @@ export default function Comprobantes() {
   };
 
   const handleDownloadPDF = async (numero: string, empresaRuc: string) => {
+    setDownloadingPDF(numero);
+    setError('');
     try {
       const blob = await apiService.downloadPDF(numero, empresaRuc);
       const url = window.URL.createObjectURL(blob);
@@ -122,23 +127,20 @@ export default function Comprobantes() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      setSuccess(`PDF ${numero} descargado exitosamente`);
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
       setError(err.response?.data?.mensaje || 'Error al descargar PDF');
+    } finally {
+      setDownloadingPDF(null);
     }
   };
 
   const handleDownloadXML = async (numero: string, empresaRuc: string) => {
+    setDownloadingXML(numero);
+    setError('');
     try {
-      setError('');
-      const data = await apiService.getEstadoComprobante(numero, empresaRuc);
-      
-      if (!data.xmlFirmado) {
-        setError('El XML firmado no está disponible');
-        return;
-      }
-
-      // Crear blob con el XML
-      const blob = new Blob([data.xmlFirmado], { type: 'application/xml' });
+      const blob = await apiService.downloadXML(numero, empresaRuc);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -147,36 +149,34 @@ export default function Comprobantes() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      setSuccess('XML descargado exitosamente');
+      setSuccess(`XML ${numero} descargado exitosamente`);
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
       setError(err.response?.data?.mensaje || 'Error al descargar XML');
+    } finally {
+      setDownloadingXML(null);
     }
   };
 
   const handleDownloadCDR = async (numero: string, empresaRuc: string) => {
+    setDownloadingCDR(numero);
+    setError('');
     try {
-      setError('');
-      const data = await apiService.getEstadoComprobante(numero, empresaRuc);
-      
-      if (!data.cdr || !data.cdr.urlDescarga) {
-        setError('El CDR no está disponible. El comprobante debe estar ACEPTADO por SUNAT.');
-        return;
-      }
-
-      // Descargar desde la URL pre-firmada
-      const response = await fetch(data.cdr.urlDescarga);
-      const blob = await response.blob();
+      const blob = await apiService.downloadCDR(numero, empresaRuc);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `R-${numero}.xml`;
+      a.download = `R-${numero}.zip`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      setSuccess('CDR descargado exitosamente');
+      setSuccess(`CDR ${numero} descargado exitosamente`);
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
       setError(err.response?.data?.mensaje || 'Error al descargar CDR');
+    } finally {
+      setDownloadingCDR(null);
     }
   };
 
@@ -194,11 +194,13 @@ export default function Comprobantes() {
     try {
       await apiService.enviarComprobanteSunat(numero, empresaRuc);
       setSuccess(`Comprobante ${numero} enviado exitosamente a SUNAT`);
+      setTimeout(() => setSuccess(''), 5000);
       
       // Actualizar el estado del comprobante
       await handleRefreshStatus(numero, empresaRuc);
     } catch (err: any) {
       setError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al enviar a SUNAT');
+      setTimeout(() => setError(''), 5000);
     } finally {
       setSendingToSunat(null);
     }
@@ -292,23 +294,37 @@ export default function Comprobantes() {
       renderCell: (params) => (
         <Box sx={{ display: 'flex', gap: 0.5 }}>
           <Tooltip title="Descargar PDF">
-            <IconButton
-              size="small"
-              color="primary"
-              onClick={() => handleDownloadPDF(params.row.numero, params.row.empresaRuc)}
-            >
-              <PdfIcon fontSize="small" />
-            </IconButton>
+            <span>
+              <IconButton
+                size="small"
+                color="primary"
+                onClick={() => handleDownloadPDF(params.row.numero, params.row.empresaRuc)}
+                disabled={downloadingPDF === params.row.numero}
+              >
+                {downloadingPDF === params.row.numero ? (
+                  <CircularProgress size={20} />
+                ) : (
+                  <PdfIcon fontSize="small" />
+                )}
+              </IconButton>
+            </span>
           </Tooltip>
 
           <Tooltip title="Descargar XML">
-            <IconButton
-              size="small"
-              color="primary"
-              onClick={() => handleDownloadXML(params.row.numero, params.row.empresaRuc)}
-            >
-              <XmlIcon fontSize="small" />
-            </IconButton>
+            <span>
+              <IconButton
+                size="small"
+                color="primary"
+                onClick={() => handleDownloadXML(params.row.numero, params.row.empresaRuc)}
+                disabled={downloadingXML === params.row.numero}
+              >
+                {downloadingXML === params.row.numero ? (
+                  <CircularProgress size={20} />
+                ) : (
+                  <XmlIcon fontSize="small" />
+                )}
+              </IconButton>
+            </span>
           </Tooltip>
 
           <Tooltip title="Descargar CDR">
@@ -317,9 +333,13 @@ export default function Comprobantes() {
                 size="small"
                 color="success"
                 onClick={() => handleDownloadCDR(params.row.numero, params.row.empresaRuc)}
-                disabled={params.row.estado !== 'ACEPTADO'}
+                disabled={params.row.estado !== 'ACEPTADO' || downloadingCDR === params.row.numero}
               >
-                <CdrIcon fontSize="small" />
+                {downloadingCDR === params.row.numero ? (
+                  <CircularProgress size={20} />
+                ) : (
+                  <CdrIcon fontSize="small" />
+                )}
               </IconButton>
             </span>
           </Tooltip>
